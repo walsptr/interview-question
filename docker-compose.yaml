@@ -1,0 +1,111 @@
+version: "3.9"
+
+networks:
+  app-net:
+    driver: bridge
+
+services:
+
+  postgres:
+    image: postgres:18
+    user: 2000:2000
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: userpassowrd
+    volumes:
+      - /opt/postgres/data:/var/lib/postgresql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - app-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+
+  postgres-keycloak:
+    image: postgres:18
+    user: 2000:2000
+    container_name: postgres-keycloak
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: userpassowrd
+      POSTGRES_DB: keycloak
+    volumes:
+      - /opt/postgres-keycloak/data:/var/lib/postgresql
+    ports:
+      - "5433:5432"
+    networks:
+      - app-net
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.5.5
+    user: 2000:2000
+    container_name: keycloak
+    restart: unless-stopped
+    environment:
+      KC_HOSTNAME: "https://keycloak.syawal.local"
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres-keycloak:5432/keycloak
+      KC_DB_DATABASE: keycloak
+      KC_DB_USERNAME: user
+      KC_DB_PASSWORD: userpassowrd
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HTTPS_CERTIFICATE_FILE: /opt/keycloak/certs/servercrt.pem
+      KC_HTTPS_CERTIFICATE_KEY_FILE: /opt/keycloak/certs/serverkey.pem
+    command: start
+    depends_on:
+      - postgres-keycloak
+    volumes:
+      - /opt/keycloak/data:/opt/keycloak/data
+      - /opt/keycloak/certs/server.crt:/opt/keycloak/certs/servercrt.pem:ro
+      - /opt/keycloak/certs/server.key:/opt/keycloak/certs/serverkey.pem:ro
+    ports:
+      - "8080:8080"
+      - "443:8443"
+    networks:
+      - app-net
+
+  vault:
+    image: hashicorp/vault:latest
+    user: 2000:2000
+    container_name: vault
+    restart: unless-stopped
+    cap_add:
+      - IPC_LOCK
+    command: vault server -config=/vault/config/vault.hcl
+    environment:
+      VAULT_ADDR: https://vault.syawal.local:8200
+      VAULT_API_ADDR: https://vault.syawal.local:8200
+      SKIP_SETCAP: true
+    volumes:
+      - /opt/vault/config/vault.hcl:/vault/config/vault.hcl:ro
+      - /opt/vault/data:/vault/data
+      - /opt/vault/log:/vault/log
+      - /opt/vault/certs:/vault/certs:ro
+    ports:
+      - "8200:8200"
+      - "8201:8201"
+    networks:
+      - app-net
+
+  jenkins:
+    image: jenkins/jenkins:lts
+    user: 2000:2000
+    container_name: jenkins
+    restart: unless-stopped
+    volumes:
+      - /opt/jenkins/home:/var/jenkins_home
+    ports:
+      - "8081:8080"
+      - "50000:50000"
+    depends_on:
+      - vault
+    networks:
+      - app-net
