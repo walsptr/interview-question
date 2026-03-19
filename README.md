@@ -1,180 +1,49 @@
-# Technical Assessment - DevOps Engineer
+# Setup Lab BooksLib (RKE2 + Vault + ESO + Argo CD + Jenkins + NGINX Gateway Fabric)
 
-# Soal 1: Analisa Sistem Design
-Perhatikan sistem desain pada arsitektur infrastruktur dan CI/CD Pipeline yang terlampir. Apakah menurut Anda kedua rancangan ini sudah memenuhi standar best practice? Coba deskripsikan pemahaman Anda terhadap alur kerjanya. Kemudian, apakah ada kekurangan fatal atau celah keamanan dalam kedua sistem desain ini? Jelaskan temuan Anda. Terakhir, berikan rekomendasi Anda untuk perbaikan desain sistem tersebut agar menjadi lebih aman, efisien, dan andal.
-![Arsitektur Infrastruktur](image/topo.png)
-![CI/CD Pipeline](image/ci-cd.png)
-
-## Answer:
-
-Saya akan menjawab soal 1 dengan memberikan penjelasan dan analisis terhadap kedua rancangan desain. Saya akan breakdown menjadi 2 bagian, yaitu arsitektur infrastruktur dan CI/CD Pipeline.
-
-### a. Arsitektur Infrastruktur
-![Arsitektur Infrastruktur](image/topo.png)
-Pada arsitektur tersebut dapat kita ketahui terdapat 2 segmen network utama, yaitu Compnay Network (192.168.0.0/24) dan Server Network (192.168.220.0/24). **Segmentasi Untuk Semua server menjadi 1 menggunakan Segmen Server Network.**
-
-User dengan Company Network dapat mengakses Aplikasi http://app.example.com melalui LB dengan arsitektur active-passive menggunakan keepalived, selain daripada itu **user juga dapat langsung mengakses server melalui SSH**.
-
-Jika diperhatikan pada **Rancher - Kubernetes Management, kita dapat melihat hanya terdapat 2 master node** dan 3 worker node. Kemudian, pada Production Workload Cluster menggunakan 3 master node dan 3 worker node. Kedua cluster menggunakan deployment RKE2.
-<br>
-**Dari hasil analisa saya dapat menyimpulkan beberapa problem pada arsitektur tersebut:**
-
-**Problem 1: Segmentasi Network**
-```
-Segmentasi Network hanya terbagi 2 segmen, yaitu Compnay Network dan Server Network. Khususnya pada Management Server dan Production Server, seharusnya dapat dipisah menjadi 2 segmen network yang berbeda. Serta sebagai tambahan, mungkin untuk memisahkan juga Database Server dengan menggunakan segmen yang berbeda. Sehingga kita bisa menggunakan beberapa segmen seperti berikut:
-- Company Network
-- Management Network
-- Production Network
-- Data Network
-```
-
-**Problem 2: Direct SSH Access**
-```
-Pada ekosistem production seharusnya kita tidak langsung mengakses server secara langsung. Seharusnya kita mengakses server melalui Bastion Server dengan menggunakan SSO OIDC untuk akses ke infrastruktur server.
-
-User
- ↓
-SSO
- ↓
-Bastion / PAM
- ↓
-Servers
-```
-
-**Problem 3: Master Node Management Cluster tidak HA**
-```
-Jika diperhatikan pada Management cluster hanya menggunakan 2 master node, ini sangat berbahaya pada penggunaan cluster kubernetes. Master node pada kubernetes menggunakan etcd cluster sebagai database state. etcd menggunakan consensus algorithm (Raft) yang membutuhkan quorum. 
-
-Rumus quorumnya adalah:
-quorum = (N / 2) + 1
-
-di mana N adalah jumlah node etcd.
-
-Artinya Kedua node harus hidup agar cluster tetap berjalan. Jika salah satu node etcd down, maka cluster akan:
-- kehilangan quorum
-- etcd tidak bisa melakukan write
-- API server menjadi read-only atau gagal
-
-Akibatnya:
-- tidak bisa deploy resource
-- tidak bisa update cluster
-- Rancher tidak bisa mengontrol cluster
-
-Untuk best practice seharusnya menggunakan 3 master node. Hal ini akan meningkatkan availability dan fault tolerance dari cluster kubernetes.
-```
-
-### b. CI/CD Pipeline
-![CI/CD Pipeline](image/ci-cd.png)
-Diagram kedua menunjukkan pipeline CI/CD berbasis GitFlow.
-Branch strategy:
-```
-feature/*
-hotfix/*
-develop
-release/*
-main/master
-```
-Flow:
-```
-feature -> develop
-release -> main
-hotfix -> main
-```
-
-Proses CI Pipeline yang terjadi:
-```
-Push / PR
-```
-Pipeline akan berjalan:
-```
-Trigger CI/CD Job
-      ↓
-Unit Test
-      ↓
-Build Image
-      ↓
-Push Image to Registry
-```
-Artinya: Pipeline menghasilkan container image.
-
-Proses CD Pipeline yang terjadi:
-Flow:
-```
-Deploy to Dev
-```
-Jika branch **develop** pipeline berhenti di Dev.
-
-Jika branch **release / main** akan lanjut ke:
-```
-Deploy to Staging
-       ↓
-Integration Test
-       ↓
-UAT
-       ↓
-Deploy to Production
-```
-Ini menunjukkan environment promotion pipeline.
-<br>
-**Dari hasil analisa saya dapat menyimpulkan beberapa problem pada pipeline CI/CD tersebut:**
-
-**Problem 1: CI pipeline tidak ada security scanning**
-```
-```
-**Problem 2: Tidak ada image signing**
-```
-```
-
-# 2. System Design & Architecture
-**Skenario Kebutuhan:**
-Perusahaan sedang membangun ekosistem cloud-native on-premise yang menyeluruh. Kami membutuhkan fondasi infrastruktur yang sangat tangguh sekaligus sistem pengiriman aplikasi yang terotomatisasi penuh. Anda ditugaskan merancang arsitektur terintegrasi yang mencakup kluster Kubernetes High Availability (HA) yang tahan terhadap kegagalan perangkat keras (terhindar dari Single Point of Failure), serta alur CI/CD pipeline dari source code hingga production yang mendukung zero downtime deployment. Infrastruktur ini harus dikelola terpusat melalui platform manajemen kluster, mengadopsi prinsip shift-left security, memastikan rahasia (secrets) dikelola secara terpusat tanpa kebocoran di repositori, serta dilindungi oleh sistem manajemen identitas dan akses (PAM & IAM) yang ketat sesuai regulasi perusahaan.
-
-**Kebutuhan Teknis:**
-
-A) Wajib:
-1. Penggunaan platform manajemen kluster terpusat untuk melakukan provisioning/bootstrap kluster Kubernetes dengan fokus pada arsitektur HA.
-2. Implementasi Continuous Integration (CI) dan Continuous Delivery (CD) menggunakan pendekatan GitOps untuk deployment aplikasi microservices.
-3. Menerapkan strategi Zero Downtime deployment seperti Rolling Update, Blue-Green, atau Canary. Hasil deployment aplikasi juga haruslah bersifat scalable secara on-demand berdasarkan beban penggunaannya.
-4. Integrasi keamanan terpusat menggunakan alat manajemen rahasia (Centralized Secrets Management) dan manajemen sertifikat TLS (Internal PKI) yang disuntikkan secara aman ke dalam kluster/aplikasi.
-5. Implementasi manajemen identitas berbasis SSO OIDC (IAM)
-
-B) Opsional:
-1. Desain kluster basis data relasional (Relational Database) dan backend manajemen secrets dengan topologi High Availability (HA) terdistribusi.
-2. Penggunaan spesifikasi routing tingkat lanjut (seperti Gateway API modern) untuk manajemen trafik ingress ke aplikasi.
-3. Implementasi Infrastructure as Code (IaC) untuk mengotomatisasi provisioning platform manajemen atau kluster infrastrukturnya.
-
-## Answer:
-
-# Soal 3: Implementasi / Demo Teknis (MVP)
-Buatlah Proof of Concept (PoC) dari desain menyeluruh yang Anda buat pada Soal 2. Anda akan mendemonstrasikan hasil pekerjaan ini pada sesi interview di tahap selanjutnya. Simpan semua konfigurasi (manifes K8s, docker-compose, script pipeline, dan file pendukung lainnya) ke dalam repositori Git publik, yang akan anda submit nantinya.
+Dokumen ini merangkum langkah yang saya lakukan di lab untuk menjalankan project BooksLib dengan pola GitOps. Setiap bagian menjelaskan apa yang dikerjakan dan kenapa dibutuhkan. Foto (jika ada) hanya sebagai ilustrasi dan boleh diabaikan.
 
 ## Preparation
 
-node-1
-- OS Ubuntu 24.04
+### Node
+
+**node-1 (Kubernetes / Control Plane)**
+- OS: Ubuntu 24.04
 - CPU: 2 vCPU
-- Memory: 4GB
+- Memory: 4 GB
 - IP Address: 192.168.113.51/24
 
-node-2
-- OS Ubuntu 24.04
+**node-2 (Infra services via Docker Compose + Jenkins agent host)**
+- OS: Ubuntu 24.04
 - CPU: 2 vCPU
-- Memory: 4GB
+- Memory: 4 GB
 - IP Address: 192.168.113.52/24
 
-##  Instalasi Kubernetes Cluster dengan RKE2 pada node-1
-deploy rke2
+---
+
+## 1) Instalasi Kubernetes Cluster dengan RKE2 (node-1)
+
+Tujuan: menyiapkan cluster Kubernetes (RKE2) sebagai tempat menjalankan aplikasi (Helm), Argo CD, External Secrets Operator, dan komponen in-cluster lainnya.
+
+### 1.1 Install RKE2
 ```
 curl -sfL https://get.rke2.io | sh -
 ```
 
-install kubectl
+Aktifkan service RKE2 server:
+```
+sudo systemctl enable --now rke2-server
+sudo systemctl status rke2-server --no-pager
+```
+
+### 1.2 Install kubectl
+Tujuan: `kubectl` dipakai untuk mengelola cluster (apply manifest, cek pod/service, dsb).
 ```
 curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
 sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
 ```
 
-create kubectl config
+### 1.3 Setup kubeconfig
+Setelah install kubectl, kita setup kubeconfig agar bisa mengakses cluster RKE2.
 ```
 mkdir -p $HOME/.kube
 sudo cp -i /etc/rancher/rke2/rke2.yaml $HOME/.kube/config
@@ -183,43 +52,55 @@ sudo chown $(id -u):$(id -g) $HOME/.kube/config
 export KUBECONFIG=$HOME/.kube/config
 ```
 
-setup bash for export kubeconfig & completion
+Tambahkan export kubeconfig dan auto-completion ke bash:
 ```
 echo "export KUBECONFIG=$HOME/.kube/config" >> $HOME/.bashrc
 echo "source <(kubectl completion bash)" >> $HOME/.bashrc
 source $HOME/.bashrc
 ```
 
-install helm
+### 1.4 Install Helm
+Sekarang kita install Helm untuk mempermudah ketika ingin deploy beberapa aplikasi nantinya.
 ```
 curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4
 chmod 700 get_helm.sh
 ./get_helm.sh
 ```
 
-## Install Nginx Gateway Fabric pada node-1
-Install gateway api. First, create CRD Nginx Gateway Fabric
+### 1.5 Verifikasi cluster
+Memastikan RKE2 + kubectl + helm sudah siap sebelum lanjut.
+```
+kubectl get nodes -o wide
+kubectl get ns
+helm version
+```
+
+## 2) Install NGINX Gateway Fabric (node-1)
+
+Menyediakan layer Gateway API (HTTP routing) untuk expose service aplikasi via subdomain `*.syawal.local`.
+
+### 2.1 Install Gateway API CRD
+Install CRD standar Gateway API yang dibutuhkan NGINX Gateway Fabric.
 ```
 kubectl kustomize "https://github.com/nginx/nginx-gateway-fabric/config/crd/gateway-api/standard?ref=v2.4.2" | kubectl apply -f -
 ```
 
-Install nginx gateway fabric
+### 2.2 Install NGINX Gateway Fabric
 ```
 helm install ngf oci://ghcr.io/nginx/charts/nginx-gateway-fabric --create-namespace -n nginx-gateway
 ```
 
-## Install MetalLB pada node-1
-Add the official MetalLB Helm chart repository
+## 3) Install MetalLB (node-1)
+
+Karena lab berjalan on-prem/local, MetalLB dipakai untuk menyediakan IP LoadBalancer dari pool LAN.
+
+### 3.1 Tambahkan repo Helm MetalLB
 ```
 helm repo add metallb https://metallb.github.io/metallb
-```
-
-Update your local Helm chart cache
-```
 helm repo update
 ```
 
-Install MetalLB using Helm
+### 3.2 Install MetalLB
 ```
 helm install metallb metallb/metallb \
   --namespace metallb-system \
@@ -227,8 +108,8 @@ helm install metallb metallb/metallb \
   --wait
 ```
 
-Create file metallb-config.yaml
-This file defines the IP pool and advertisement method for MetalLB
+### 3.3 Konfigurasi IP pool MetalLB
+Buat file `metallb-config.yaml` untuk mendefinisikan rentang IP yang boleh dipakai:
 ```
 apiVersion: metallb.io/v1beta1
 kind: IPAddressPool
@@ -249,13 +130,16 @@ spec:
     - rke2-pool
 ```
 
-apply metallb-config.yaml
+Apply:
 ```
 kubectl apply -f metallb-config.yaml
 ```
-## Install Docker pada node-2
 
-update repository
+## 4) Install Docker (node-2)
+
+Node-2 digunakan untuk menjalankan komponen infra via Docker Compose (Vault, Postgres, Jenkins controller, dsb) dan juga menjadi host Jenkins agent untuk build/push image.
+
+### 4.1 Tambahkan repo Docker
 ```
 # Add Docker's official GPG key:
 sudo apt update
@@ -276,54 +160,61 @@ EOF
 sudo apt update
 ```
 
-install latest version docker
+### 4.2 Install Docker Engine + Compose plugin
 ```
 sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 ```
 
-enable and start service
+### 4.3 Aktifkan Docker
 ```
 sudo systemctl enable docker
 sudo systemctl start docker
 ```
 
-check status
+Cek status:
 ```
 sudo systemctl status docker
 ```
 
-## Membuat Direktori untuk Persistent Volume
+## 5) Membuat Direktori untuk Persistent Volume (node-2)
+
+Untuk menyediakan persisten storage bagi semua container infra, kita buat direktori di `/opt/` dengan owner `2000:2000`. 
 ```
 sudo mkdir -p /opt/postgres/data
 sudo mkdir -p /opt/postgres-keycloak/data
 sudo mkdir -p /opt/keycloak/data
 sudo mkdir -p /opt/keycloak/certs
 sudo mkdir -p /opt/vault/data
+sudo mkdir -p /opt/vault/certs
+sudo mkdir -p /opt/vault/config
 sudo mkdir -p /opt/jenkins/home
 
 sudo chown -R 2000:2000 /opt/
 ```
 
-## Membuat Certificate Authority (CA) dan Server Certificate
+## 6) Membuat Certificate Authority (CA) dan Server Certificate (node-2)
 
-Clone the repository
+Lab akan menggunakan domain `*.syawal.local` dengan TLS self-signed (dipakai Vault dan komponen lain).
+
+Clone repo yang berisi file pendukung (vault config/policy, dll):
 ```
-git clone https://github.com/syawal/Question-Answer.git
-cd Question-Answer
+git clone https://github.com/walsptr/interview-question.git
+cd interview-question
 ```
 
-create certs directory
+Buat direktori cert:
 ```
 mkdir certs
 cd certs
 ```
 
-create key for ca
+### 6.1 Buat CA
+Buat private key CA:
 ```
 openssl genrsa -out syawal-ca.key 4096
 ```
 
-create cert for ca
+Buat sertifikat CA:
 ```
 openssl req -x509 -new -nodes \
 -key syawal-ca.key \
@@ -332,12 +223,13 @@ openssl req -x509 -new -nodes \
 -subj "/C=ID/ST=Indonesia/L=Jakarta/O=Syawal Local/CN=syawal.local"
 ```
 
-create key for syawal.local
+### 6.2 Buat wildcard sertifikat `*.syawal.local`
+Buat private key:
 ```
 openssl genrsa -out syawal.local.key 4096
 ```
 
-create csr for syawal.local
+Buat CSR + SAN:
 ```
 openssl req -new \
 -key syawal.local.key \
@@ -349,7 +241,7 @@ subjectAltName = DNS:*.syawal.local,DNS:syawal.local
 EOF
 ```
 
-create cert for syawal.local
+Sign sertifikat wildcard dengan CA:
 ```
 openssl x509 -req \
 -in syawal.local.csr \
@@ -362,54 +254,62 @@ openssl x509 -req \
 -extfile san.cnf
 ```
 
-check cert for syawal.local
+Verifikasi issuer:
 ```
 openssl x509 -in syawal.local.crt -text -noout | grep Issuer
 ```
 
-Copy ca.crt dan server certificate ke vault directory
+### 6.3 Copy sertifikat ke direktori layanan
+Copy CA + server cert ke Vault:
 ```
 cp syawal-ca.crt /opt/vault/certs/ca.crt
 cp syawal.local.crt /opt/vault/certs/vault.crt
 cp syawal.local.key /opt/vault/certs/vault.key
 ```
 
-Copy server certificate ke keycloak directory
+Copy server cert ke Keycloak:
 ```
 cp syawal.local.crt /opt/keycloak/certs/server.crt
 cp syawal.local.key /opt/keycloak/certs/server.key
 ```
 
-Copy vault.hcl ke vault directory
+Copy konfigurasi Vault:
 ```
 cd ..
 cp /vault/vault.hcl /opt/vault/config/
 ```
 
-copy policy bookslib ke vault directory
+Copy policy BooksLib ke direktori Vault:
 ```
 cp bookslib-dev.hcl /opt/vault/data/
 cp bookslib-prod.hcl /opt/vault/data/
 ```
 
-Deploy service dengan docker compose
+---
+
+## 7) Deploy service infra dengan Docker Compose (node-2)
+
+Tujuan: menjalankan layanan seperti Vault (dan service infra lain sesuai compose) dalam satu host.
 ```
 docker compose up -d
 ```
 
-## Inisialisasi Vault
-exec shell docker container vault
+## 8) Inisialisasi Vault (node-2)
+
+Tujuan: Vault perlu di-initialize (generate unseal keys + root token) dan di-unseal sebelum bisa dipakai ESO.
+
+Masuk ke shell container vault:
 ```
 sudo docker exec -it vault sh
 export VAULT_CACERT="/vault/certs/ca.crt"
 ```
 
-init vault
+Init vault:
 ```
 vault operator init
 ```
 
-example output init
+Contoh output init:
 ```
 Unseal Key 1: mAaip7WrZPM/lEgNXAMmavruO4EnqdLOaEgXzQNtxwII
 Unseal Key 2: ua/0JeJCUHvPvf6AzsW47HCwvHa/qad+uJlrUXY7vml4
@@ -431,20 +331,19 @@ It is possible to generate new unseal keys, provided you have a quorum of
 existing unseal keys shares. See "vault operator rekey" for more information.
 ```
 
-unseal vault
+Unseal vault (threshold 3 key):
 ```
 vault operator unseal mAaip7WrZPM/lEgNXAMmavruO4EnqdLOaEgXzQNtxwII
 vault operator unseal ua/0JeJCUHvPvf6AzsW47HCwvHa/qad+uJlrUXY7vml4
 vault operator unseal EOF68j+tM2IYQmVOvgDflHZswuRIGyg8P7QY5Lo+hmtq
 ```
 
-login vault
+Login vault:
 ```
 vault login hvs.qS0VkXVeRC7mvLn6c4sz8Fw5
 ```
 
-
-export vault token and create kv-v2 secret engine
+Set alamat Vault + token, lalu enable KV v2:
 ```
 export VAULT_ADDR="https://vault.syawal.local:8200"
 export VAULT_TOKEN="hvs.qS0VkXVeRC7mvLn6c4sz8Fw5"
@@ -454,6 +353,7 @@ vault secrets enable -path=kv kv-v2
 vault secrets list
 ```
 
+Masukkan secret untuk DEV/PROD (contoh di lab):
 ```
 # DEV
 vault kv put kv/bookslib/dev/auth-service \
@@ -476,22 +376,23 @@ vault kv put kv/bookslib/prod/reviews-service \
   db_password="userpassowrd"
 ```
 
-check
+Cek secret DEV:
 ```
 vault kv get kv/bookslib/dev/auth-service
 vault kv get kv/bookslib/dev/books-service
 vault kv get kv/bookslib/dev/reviews-service
 ```
 
-check prod
+Cek secret PROD:
 ```
 vault kv get kv/bookslib/prod/auth-service
 vault kv get kv/bookslib/prod/books-service
 vault kv get kv/bookslib/prod/reviews-service
 ```
 
-## Install External Secrets Operator di node-1
-install external secrets operator
+## 9) Install External Secrets Operator (node-1)
+
+ESO digunakan untuk menarik secret dari Vault dan membuat Kubernetes Secret yang dipakai aplikasi.
 ```
 helm repo add external-secrets https://charts.external-secrets.io
 
@@ -502,8 +403,11 @@ helm install external-secrets \
     --set installCRDs=true
 ```
 
-## Membuat JWT Service Account Token Reviewer untuk Vault di node-1
-Create jwt serviceaccount token reviewer
+## 10) Membuat JWT Service Account Token Reviewer untuk Vault (node-1)
+
+Vault Kubernetes auth perlu melakukan TokenReview ke API Server. Untuk itu Vault butuh `token_reviewer_jwt` yang punya RBAC `system:auth-delegator`. Token ini diambil dari Secret service-account token agar stabil.
+
+Buat namespace + serviceaccount + clusterrolebinding:
 ```
 kubectl create namespace vault
 kubectl -n vault create serviceaccount vault-token-reviewer
@@ -512,7 +416,7 @@ kubectl create clusterrolebinding vault-token-reviewer-binding \
   --serviceaccount=vault:vault-token-reviewer
 ```
 
-buat secret token yang persisten untuk SA
+Buat secret token yang persisten untuk SA:
 ```
 cat <<'YAML' | kubectl apply -f -
 apiVersion: v1
@@ -525,25 +429,29 @@ metadata:
 type: kubernetes.io/service-account-token
 YAML
 ```
-generate jwt token
+
+Ambil JWT token dari secret (token reviewer):
 ```
-kubectl -n vault create token vault-token-reviewer
+kubectl -n vault get secret vault-token-reviewer-token -o jsonpath='{.data.token}' |base64 -d
 ```
 
-get ca for vault
+Ambil CA Kubernetes (dipakai Vault untuk verify API server):
 ```
 kubectl config view --raw --minify --flatten -o jsonpath='{.clusters[0].cluster.certificate-authority-data}' \
 | base64 -d > ca-kube.crt
 ```
 
-## Konfigurasi Vault Auth Kubernetes di node-2
-enable auth kubernetes
+## 11) Konfigurasi Vault Auth Kubernetes (node-2)
+
+Mengaktifkan auth method `kubernetes` di Vault dan mengaitkan Vault dengan API server Kubernetes (host+CA+token reviewer).
+
+Enable auth kubernetes:
 ```
 vault auth enable kubernetes
 vault auth list
 ```
 
-copy token serviceaccount pada kube yang telah dibuat ke sini
+Masuk ke container vault dan konfigurasi `auth/kubernetes/config`:
 ```
 sudo docker exec -it vault sh
 export VAULT_CACERT="/vault/certs/ca.crt"
@@ -559,12 +467,12 @@ vault write auth/kubernetes/config \
   token_reviewer_jwt="<SERVICEACCOUNT_TOKEN>"
 ```
 
-Apply policy dev:
+Apply policy DEV:
 ```
 vault policy write bookslib-dev /vault/data/bookslib-dev.hcl
 ```
 
-Di repo GitOps kita, ESO pakai ServiceAccount bookslib-vault-auth di namespace bookslib-dev . Buat role:
+Buat role untuk ESO DEV (ESO memakai ServiceAccount `bookslib-vault-auth` di namespace `bookslib-dev`):
 ```
 vault write auth/kubernetes/role/bookslib-dev-eso \
   bound_service_account_names="bookslib-vault-auth" \
@@ -574,7 +482,7 @@ vault write auth/kubernetes/role/bookslib-dev-eso \
 ```
 
 Ulangi untuk PROD (policy & role terpisah)
-Apply policy prod: 
+Apply policy prod:
 ```
 vault policy write bookslib-prod /vault/data/bookslib-prod.hcl
 
@@ -585,85 +493,126 @@ vault write auth/kubernetes/role/bookslib-prod-eso \
   ttl="10h"
 ```
 
-check
+Cek role:
 ```
 vault list auth/kubernetes/role
 ```
 
-## Setup Jenkins
+## 12) Setup Jenkins (node-2)
 
+Jenkins dipakai untuk build/test aplikasi, push image ke DockerHub, lalu update repo GitOps.
+
+Akses Jenkins menggunakan domain/IP address dari node-2:
 ![jenkins 1](image/jenkins-1.png)
 
+Ambil initial admin password Jenkins dari volume `/opt/jenkins`:
+```
+sudo cat /opt/jenkins/home/secrets/initialAdminPassword
+```
 ![jenkins 2](image/jenkins-2.png)
 
+Install plugin yang dibutuhkan (pakai suggested plugins):
 ![jenkins 3](image/jenkins-3.png)
-
 ![jenkins 4](image/jenkins-4.png)
 
+Buat user admin Jenkins:
 ![jenkins 5](image/jenkins-5.png)
 
+Set URL akses Jenkins:
 ![jenkins 6](image/jenkins-6.png)
 
+Jenkins siap digunakan:
 ![jenkins 7](image/jenkins-7.png)
 
-Create key pair for jenkins
+Generate key pair untuk Jenkins agent (untuk SSH ke host agent):
 ```
 ssh-keygen -t rsa
 ```
+<dapatkan image untuk jenkins agent>
 
-Create key pair for jenkins-gitops
+Buat token akses DockerHub (untuk push image):
+![dockerhub token](image/jenkins-create-dockerhub-token.png)
+
+Tambahkan credential DockerHub (untuk push image):
+- Menu: Manage Jenkins -> Manage Credentials -> Global credentials (unrestricted) -> Add Credentials
+- Pilih: Username with password
+- Password: token dari DockerHub
+![jenkins docker creds](image/jenkins-add-dockerhub-creds.png)
+
+Buat key pair GitHub untuk user `jenkins` (dipakai push repo GitOps via SSH):
 ```
 sudo -i
 su - jenkins
 ssh-keygen -t ed25519 -C "jenkins-gitops" -f ~/.ssh/jenkins_gitops
 ```
 
-## Install ArgoCD di node-1
-deploy argocd
+Tambahkan public key ke GitHub (deploy key / ssh key) agar Jenkins agent bisa autentikasi:
+![add pubkey jenkins to github](image/jenkins-add-pubkey-github.png)
+
+Tambahkan private key ke Jenkins Credentials:
+- Menu: Manage Jenkins -> Manage Credentials -> Global credentials (unrestricted) -> Add Credentials
+- Pilih: SSH Username with private key
+![add private jenkins to credential](image/jenkins-add-privkey-github.png)
+
+## 13) Install Argo CD (node-1)
+
+Tujuan: Argo CD menjadi engine GitOps yang membaca repo GitOps dan melakukan deploy/sync ke cluster.
+
+Deploy Argo CD:
 ```
 kubectl create ns argocd
 kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 ```
 
-install argocd cli
+Verifikasi pod Argo CD:
+```
+kubectl -n argocd get pods
+kubectl -n argocd get svc
+```
+
+Install Argo CD CLI:
 ```
 curl -sSL -o argocd-linux-amd64 https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
 sudo install -m 555 argocd-linux-amd64 /usr/local/bin/argocd
 rm argocd-linux-amd64
 ```
 
-expose argocd
+Expose Argo CD (lab):
 ```
 kubectl patch svc argocd-server -n argocd -p '{"spec": {"type": "NodePort"}}'
 ```
 
-get initial password admin
+Ambil initial password admin:
 ```
 argocd admin initial-password -n argocd
 ```
-atau
+atau:
 ```
 kubectl -n argocd get secret argocd-initial-admin-secret \
   -o jsonpath='{.data.password}' | base64 -d; echo
 ```
 
-Jika `argocd` CLI sudah terpasang:
+Login via CLI:
 ```
 argocd login 192.168.113.51:<Port NodePort SVC argocd-server> --username admin --password "<PASSWORD>"
 ```
 
-Tambahkan repository ke Argo CD. Karena repo kamu public, repo dapat ditambahkan tanpa credential:
+Tambahkan repository ke Argo CD (repo public):
 ```
 argocd repo add https://github.com/walsptr/bookslib.git --type git
 argocd repo add https://github.com/walsptr/gitops.git --type git
 ```
 
-## Update Configmap CoreDNS
+## 14) Update ConfigMap CoreDNS (node-1)
+
+Tujuan: pod di cluster perlu bisa resolve `vault.syawal.local`. Karena ini domain local lab, resolusinya ditambahkan via CoreDNS `hosts` plugin.
+
+Export ConfigMap CoreDNS:
 ```
 kubectl  get cm -n kube-system rke2-coredns-rke2-coredns -o yaml > coredns.yaml
 ```
 
-add line
+Tambahkan blok berikut pada Corefile:
 ```
 hosts  {
     192.168.113.52  vault.syawal.local
@@ -671,18 +620,27 @@ hosts  {
 }
 ```
 
-apply configmap
+Apply ConfigMap:
 ```
 kubectl apply -f coredns.yaml
 ```
 
-restart deployment coredns
+Restart deployment CoreDNS:
 ```
 kubectl rollout restart deployment rke2-coredns-rke2-coredns -n kube-system
 ```
 
-## Bootstrap Project Bookslib di node-1
-Buatkan secret ca-cert-secret untuk koneksi secretstore ke vault. Gunakan ca yang tadi kita buat di node-2
+## 15) Bootstrap Project BooksLib (node-1)
+
+Tujuan: menyiapkan prasyarat GitOps (CA secret untuk koneksi Vault), lalu bootstrap Argo CD AppProject dan App-of-Apps.
+
+Buat namespace aplikasi:
+```
+kubectl create ns bookslib-dev
+kubectl create ns bookslib-prod
+```
+
+Buat secret `ca-cert-secret` untuk koneksi SecretStore -> Vault (gunakan CA yang dibuat di node-2):
 ```
 kubectl -n bookslib-dev create secret generic ca-cert-secret \
   --from-file=ca=./ca-vault.crt
@@ -691,18 +649,18 @@ kubectl -n bookslib-prod create secret generic ca-cert-secret \
   --from-file=ca=./ca-vault.crt
 ```
 
-Apply project:
+Apply AppProject:
 ```
 kubectl apply -n argocd -f https://raw.githubusercontent.com/walsptr/gitops/main/argocd/project-bookslib.yaml
 ```
 
-Deploy App-of-Apps (dev & prod). Cukup apply root Application:
+Deploy App-of-Apps (dev & prod):
 ```
 kubectl apply -n argocd -f https://raw.githubusercontent.com/walsptr/gitops/main/argocd/app-of-apps/dev.yaml
 kubectl apply -n argocd -f https://raw.githubusercontent.com/walsptr/gitops/main/argocd/app-of-apps/prod.yaml
 ```
 
-Lalu cek di Argo CD UI/CLI:
+Verifikasi dari CLI:
 ```
 argocd app list
 argocd app get bookslib-dev
