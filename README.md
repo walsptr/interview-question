@@ -1,4 +1,174 @@
-# Setup Lab BooksLib (RKE2 + Vault + ESO + Argo CD + Jenkins + NGINX Gateway Fabric)
+# Technical Assessment - DevOps Engineer
+
+# Soal 1: Analisa Sistem Design
+Perhatikan sistem desain pada arsitektur infrastruktur dan CI/CD Pipeline yang terlampir. Apakah menurut Anda kedua rancangan ini sudah memenuhi standar best practice? Coba deskripsikan pemahaman Anda terhadap alur kerjanya. Kemudian, apakah ada kekurangan fatal atau celah keamanan dalam kedua sistem desain ini? Jelaskan temuan Anda. Terakhir, berikan rekomendasi Anda untuk perbaikan desain sistem tersebut agar menjadi lebih aman, efisien, dan andal.
+![Arsitektur Infrastruktur](image/topo.png)
+![CI/CD Pipeline](image/ci-cd.png)
+
+## Answer:
+
+Saya akan menjawab soal 1 dengan memberikan penjelasan dan analisis terhadap kedua rancangan desain. Saya akan breakdown menjadi 2 bagian, yaitu arsitektur infrastruktur dan CI/CD Pipeline.
+
+### a. Arsitektur Infrastruktur
+![Arsitektur Infrastruktur](image/topo.png)
+Pada arsitektur tersebut dapat kita ketahui terdapat 2 segmen network utama, yaitu Compnay Network (192.168.0.0/24) dan Server Network (192.168.220.0/24). **Segmentasi Untuk Semua server menjadi 1 menggunakan Segmen Server Network.**
+
+User dengan Company Network dapat mengakses Aplikasi http://app.example.com melalui LB dengan arsitektur active-passive menggunakan keepalived, selain daripada itu **user juga dapat langsung mengakses server melalui SSH**.
+
+Jika diperhatikan pada **Rancher - Kubernetes Management, kita dapat melihat hanya terdapat 2 master node** dan 3 worker node. Kemudian, pada Production Workload Cluster menggunakan 3 master node dan 3 worker node. Kedua cluster menggunakan deployment RKE2.
+
+Selain itu, pada arsitektur menggunakan vault sebagai secret management. Kemudian, menggunakan transit vault untuk auto unseal, namun disini **node transit vault hanya menggunakan 1 node**. Sehingga jika node tersebut down, maka vault akan menjadi tidak dapat diakses.
+
+<br>
+**Dari hasil analisa saya dapat menyimpulkan beberapa problem pada arsitektur tersebut:**
+
+**Problem 1: Segmentasi Network**
+```
+Segmentasi Network hanya terbagi 2 segmen, yaitu Compnay Network dan Server Network. Khususnya pada Management Server dan Production Server, seharusnya dapat dipisah menjadi 2 segmen network yang berbeda. Serta sebagai tambahan, mungkin untuk memisahkan juga Database Server dengan menggunakan segmen yang berbeda. Sehingga kita bisa menggunakan beberapa segmen seperti berikut:
+- Company Network
+- Management Network
+- Production Network
+- Data Network
+```
+
+**Problem 2: Direct SSH Access**
+```
+Pada ekosistem production seharusnya kita tidak langsung mengakses server secara langsung. Seharusnya kita mengakses server melalui Bastion Server dengan menggunakan SSO OIDC untuk akses ke infrastruktur server.
+
+User
+ ↓
+SSO
+ ↓
+Bastion / PAM
+ ↓
+Servers
+```
+
+**Problem 3: Master Node Management Cluster tidak HA**
+```
+Jika diperhatikan pada Management cluster hanya menggunakan 2 master node, ini sangat berbahaya pada penggunaan cluster kubernetes. Master node pada kubernetes menggunakan etcd cluster sebagai database state. etcd menggunakan consensus algorithm (Raft) yang membutuhkan quorum. 
+
+Rumus quorumnya adalah:
+quorum = (N / 2) + 1
+
+di mana N adalah jumlah node etcd.
+
+Artinya Kedua node harus hidup agar cluster tetap berjalan. Jika salah satu node etcd down, maka cluster akan:
+- kehilangan quorum
+- etcd tidak bisa melakukan write
+- API server menjadi read-only atau gagal
+
+Akibatnya:
+- tidak bisa deploy resource
+- tidak bisa update cluster
+- Rancher tidak bisa mengontrol cluster
+
+Untuk best practice seharusnya menggunakan 3 master node. Hal ini akan meningkatkan availability dan fault tolerance dari cluster kubernetes.
+```
+
+**Problem 4: Node Transit Auto Unseal Vault tidak HA**
+```
+Node Transit Auto Unseal Vault hanya menggunakan 1 node. Sehingga jika node tersebut down, maka vault akan menjadi tidak dapat diakses.
+
+Untuk best practice seharusnya menggunakan 3 node transit vault. Hal ini akan meningkatkan availability dan fault tolerance dari vault.
+```
+
+### b. CI/CD Pipeline
+![CI/CD Pipeline](image/ci-cd.png)
+Diagram kedua menunjukkan pipeline CI/CD berbasis GitFlow.
+Branch strategy:
+```
+feature/*
+hotfix/*
+develop
+release/*
+main/master
+```
+Flow:
+```
+feature -> develop
+release -> main
+hotfix -> main
+```
+
+Proses CI Pipeline yang terjadi:
+```
+Push / PR
+```
+Pipeline akan berjalan:
+```
+Trigger CI/CD Job
+      ↓
+Unit Test
+      ↓
+Build Image
+      ↓
+Push Image to Registry
+```
+Artinya: Pipeline menghasilkan container image.
+
+Proses CD Pipeline yang terjadi:
+Flow:
+```
+Deploy to Dev
+```
+Jika branch **develop** pipeline berhenti di Dev.
+
+Jika branch **release / main** akan lanjut ke:
+```
+Deploy to Staging
+       ↓
+Integration Test
+       ↓
+UAT
+       ↓
+Deploy to Production
+```
+Ini menunjukkan environment promotion pipeline.
+<br>
+**Dari hasil analisa saya dapat menyimpulkan beberapa problem pada pipeline CI/CD tersebut:**
+
+**Problem 1: Tidak ada Approval Sebelum Production**
+```
+Jika kita lihat pada diagram CI/CD Pipeline, kita bisa melihat bahwa tidak ada approval step sebelum deployment ke environment production. Hal ini bisa menyebabkan beberapa masalah, seperti:
+- Deployment ke production tanpa approval dari tim manajemen.
+- Deployment ke production tanpa testing yang cukup.
+- Deployment ke production tanpa dokumentasi yang cukup.
+```
+
+# 2. System Design & Architecture
+**Skenario Kebutuhan:**
+Perusahaan sedang membangun ekosistem cloud-native on-premise yang menyeluruh. Kami membutuhkan fondasi infrastruktur yang sangat tangguh sekaligus sistem pengiriman aplikasi yang terotomatisasi penuh. Anda ditugaskan merancang arsitektur terintegrasi yang mencakup kluster Kubernetes High Availability (HA) yang tahan terhadap kegagalan perangkat keras (terhindar dari Single Point of Failure), serta alur CI/CD pipeline dari source code hingga production yang mendukung zero downtime deployment. Infrastruktur ini harus dikelola terpusat melalui platform manajemen kluster, mengadopsi prinsip shift-left security, memastikan rahasia (secrets) dikelola secara terpusat tanpa kebocoran di repositori, serta dilindungi oleh sistem manajemen identitas dan akses (PAM & IAM) yang ketat sesuai regulasi perusahaan.
+
+**Kebutuhan Teknis:**
+
+A) Wajib:
+1. Penggunaan platform manajemen kluster terpusat untuk melakukan provisioning/bootstrap kluster Kubernetes dengan fokus pada arsitektur HA.
+2. Implementasi Continuous Integration (CI) dan Continuous Delivery (CD) menggunakan pendekatan GitOps untuk deployment aplikasi microservices.
+3. Menerapkan strategi Zero Downtime deployment seperti Rolling Update, Blue-Green, atau Canary. Hasil deployment aplikasi juga haruslah bersifat scalable secara on-demand berdasarkan beban penggunaannya.
+4. Integrasi keamanan terpusat menggunakan alat manajemen rahasia (Centralized Secrets Management) dan manajemen sertifikat TLS (Internal PKI) yang disuntikkan secara aman ke dalam kluster/aplikasi.
+5. Implementasi manajemen identitas berbasis SSO OIDC (IAM)
+
+B) Opsional:
+1. Desain kluster basis data relasional (Relational Database) dan backend manajemen secrets dengan topologi High Availability (HA) terdistribusi.
+2. Penggunaan spesifikasi routing tingkat lanjut (seperti Gateway API modern) untuk manajemen trafik ingress ke aplikasi.
+3. Implementasi Infrastructure as Code (IaC) untuk mengotomatisasi provisioning platform manajemen atau kluster infrastrukturnya.
+
+## Answer:
+
+## Architecture Infrastructure
+![Architecture Infrastructure](image/Topology-Page-1.png)
+
+## CI/CD Pipeline Diagram
+![Architecture CI/CD](image/Topology-Page-2.png)
+![CI/CD Pipeline](image/ci-cd-pipeline-question2.png)
+
+
+# Soal 3: Implementasi / Demo Teknis (MVP)
+Buatlah Proof of Concept (PoC) dari desain menyeluruh yang Anda buat pada Soal 2. Anda akan mendemonstrasikan hasil pekerjaan ini pada sesi interview di tahap selanjutnya. Simpan semua konfigurasi (manifes K8s, docker-compose, script pipeline, dan file pendukung lainnya) ke dalam repositori Git publik, yang akan anda submit nantinya.
+
+
+# Setup Lab BooksLib 
 
 Dokumen ini merangkum langkah yang saya lakukan di lab untuk menjalankan project BooksLib dengan pola GitOps. Setiap bagian menjelaskan apa yang dikerjakan dan kenapa dibutuhkan. Foto (jika ada) hanya sebagai ilustrasi dan boleh diabaikan.
 
@@ -285,8 +455,6 @@ cp bookslib-dev.hcl /opt/vault/data/
 cp bookslib-prod.hcl /opt/vault/data/
 ```
 
----
-
 ## 7) Deploy service infra dengan Docker Compose (node-2)
 
 Tujuan: menjalankan layanan seperti Vault (dan service infra lain sesuai compose) dalam satu host.
@@ -524,11 +692,38 @@ Set URL akses Jenkins:
 Jenkins siap digunakan:
 ![jenkins 7](image/jenkins-7.png)
 
+Sekarang kita akan setup node-2 sebagai agent Jenkins.
+Buatkan user `jenkins` di node-2:
+```
+sudo useradd -m -s /bin/bash jenkins
+sudo usermod -aG docker jenkins
+sudo mkdir -p /home/jenkins/agent
+sudo chown -R jenkins:jenkins /home/jenkins
+```
+
 Generate key pair untuk Jenkins agent (untuk SSH ke host agent):
 ```
 ssh-keygen -t rsa
+cat .ssh/id_rsa.pub
+
+# Taruh public key di sini
+sudo -u jenkins mkdir -p /home/jenkins/.ssh
+sudo -u jenkins chmod 700 /home/jenkins/.ssh
+sudo tee -a /home/jenkins/.ssh/authorized_keys > /dev/null <<'EOF'
+REPLACE_ME_PUBLIC_KEY
+EOF
+sudo -u jenkins chmod 600 /home/jenkins/.ssh/authorized_keys
 ```
-<dapatkan image untuk jenkins agent>
+
+Install dependencies di node-2:
+```
+sudo apt-get update
+sudo apt-get install -y openjdk-21-jre-headless git openssh-server python3 python3-pip
+sudo -u jenkins python3 -m pip install --user pyyaml --break-system-packages
+```
+
+Tambahkan node-2 sebagai agent Jenkins:
+![jenkins add agent](image/jenkins-add-agent.png)
 
 Buat token akses DockerHub (untuk push image):
 ![dockerhub token](image/jenkins-create-dockerhub-token.png)
@@ -665,3 +860,25 @@ Verifikasi dari CLI:
 argocd app list
 argocd app get bookslib-dev
 ```
+
+## 16) Setup Pipeline Jenkins (node-2)
+Buat job baru pada jenkins dengan type multibranch pipeline.
+![jenkins create multibranch pipeline](image/jenkins-create-multibranch-pipeline.png)
+
+Tambahkan branch source, arahkan branch source ke repository aplikasi bookslib:
+![jenkins add branch source](image/jenkins-add-branch-source.png)
+
+Tentukan nama jenkinsfile yang akan digunakan oleh pipeline, pastikan jenkinsfile ada di root repository aplikasi bookslib:
+![jenkins add jenkinsfile](image/jenkins-add-jenkinsfile.png)
+Disini saya juga enable auto scan repository, agar setiap ada perubahan di branch, pipeline akan di trigger.
+
+Untuk pertama kali build, edit environment variable 'FORCE_BUILD_ALL' dengan nilai 'true':
+![jenkins add env var](image/jenkins-add-env-var.png)
+
+Jika build berhasil, edit environment variable 'FORCE_BUILD_ALL' dengan nilai 'false', agar hanya build aplikasi yang ada perubahan:
+![jenkins add env var](image/jenkins-add-env-var-2.png)
+
+Pada branch/environment prod, perlu dilakukan approval pull request sebelum di merge ke branch main gitops.
+![jenkins add approval](image/jenkins-add-approval.png)
+![jenkins add approval](image/jenkins-add-approval-2.png)
+Kemudian baru kita lakukan sync secara manual di Argo CD.
