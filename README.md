@@ -348,12 +348,9 @@ sudo systemctl status docker
 
 ## 5) Membuat Direktori untuk Persistent Volume (node-2)
 
-Untuk menyediakan persisten storage bagi semua container infra, kita buat direktori di `/opt/` dengan owner `2000:2000`. 
+Untuk menyediakan persisten storage bagi semua container infra, kita buat direktori di `/opt/` dengan owner `2000:2000`.
 ```
 sudo mkdir -p /opt/postgres/data
-sudo mkdir -p /opt/postgres-keycloak/data
-sudo mkdir -p /opt/keycloak/data
-sudo mkdir -p /opt/keycloak/certs
 sudo mkdir -p /opt/vault/data
 sudo mkdir -p /opt/vault/certs
 sudo mkdir -p /opt/vault/config
@@ -437,14 +434,6 @@ cp syawal.local.crt /opt/vault/certs/vault.crt
 cp syawal.local.key /opt/vault/certs/vault.key
 ```
 
-Copy server cert ke Keycloak:
-```
-cp syawal.local.crt /opt/keycloak/certs/servercrt.pem
-cp syawal.local.key /opt/keycloak/certs/serverkey.pem
-sudo chmod 644 /opt/keycloak/certs/servercrt.pem
-sudo chmod 644 /opt/keycloak/certs/serverkey.pem
-```
-
 Copy konfigurasi Vault:
 ```
 cd ..
@@ -501,7 +490,7 @@ It is possible to generate new unseal keys, provided you have a quorum of
 existing unseal keys shares. See "vault operator rekey" for more information.
 ```
 
-Unseal vault (threshold 3 key):
+Unseal vault (threshold 3 key), sesuaikan dengan output init:
 ```
 vault operator unseal mAaip7WrZPM/lEgNXAMmavruO4EnqdLOaEgXzQNtxwII
 vault operator unseal ua/0JeJCUHvPvf6AzsW47HCwvHa/qad+uJlrUXY7vml4

@@ -27,49 +27,6 @@ services:
       timeout: 3s
       retries: 5
 
-  postgres-keycloak:
-    image: postgres:18
-    user: 2000:2000
-    container_name: postgres-keycloak
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: userpassowrd
-      POSTGRES_DB: keycloak
-    volumes:
-      - /opt/postgres-keycloak/data:/var/lib/postgresql
-    ports:
-      - "5433:5432"
-    networks:
-      - app-net
-
-  keycloak:
-    image: quay.io/keycloak/keycloak:26.5.5
-    container_name: keycloak
-    restart: unless-stopped
-    environment:
-      KC_HOSTNAME: "https://keycloak.syawal.local"
-      KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://postgres-keycloak:5432/keycloak
-      KC_DB_DATABASE: keycloak
-      KC_DB_USERNAME: user
-      KC_DB_PASSWORD: userpassowrd
-      KC_BOOTSTRAP_ADMIN_USERNAME: admin
-      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
-      KC_HTTPS_CERTIFICATE_FILE: /opt/keycloak/certs/servercrt.pem
-      KC_HTTPS_CERTIFICATE_KEY_FILE: /opt/keycloak/certs/serverkey.pem
-    command: start
-    depends_on:
-      - postgres-keycloak
-    volumes:
-      - /opt/keycloak/data:/opt/keycloak/data
-      - /opt/keycloak/certs:/opt/keycloak/certs
-    ports:
-      - "8080:8080"
-      - "443:8443"
-    networks:
-      - app-net
-
   vault:
     image: hashicorp/vault:latest
     user: 2000:2000
