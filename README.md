@@ -441,6 +441,8 @@ Copy server cert ke Keycloak:
 ```
 cp syawal.local.crt /opt/keycloak/certs/servercrt.pem
 cp syawal.local.key /opt/keycloak/certs/serverkey.pem
+sudo chmod 644 /opt/keycloak/certs/servercrt.pem
+sudo chmod 644 /opt/keycloak/certs/serverkey.pem
 ```
 
 Copy konfigurasi Vault:
