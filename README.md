@@ -170,7 +170,8 @@ Buatlah Proof of Concept (PoC) dari desain menyeluruh yang Anda buat pada Soal 2
 
 # Setup Lab BooksLib 
 
-Dokumen ini merangkum langkah yang saya lakukan di lab untuk menjalankan project BooksLib dengan pola GitOps. Setiap bagian menjelaskan apa yang dikerjakan dan kenapa dibutuhkan. Foto (jika ada) hanya sebagai ilustrasi dan boleh diabaikan.
+Dokumen ini merangkum langkah yang saya lakukan di lab untuk menjalankan project BooksLib dengan pola GitOps. Setiap bagian menjelaskan apa yang dikerjakan.
+> **Catatan**: "Pada diagram arsitektu ideal saya, rancangan mencakup platform manajemen kluster dengan 3 Control Plane dan 3 Worker Node. Serta Database dan Secret Management berbasis High Availability (HA) untuk memastikan tahan terhadap Single Point of Failure (SPOF) dan mencegah Split Brain. Namun, Karena terbatasnya sumber daya di lab, saya hanya dapat mengimplementasikan kluster K8S dengan Single Node. Serta Database, Secret Management dan CI/CD Tools (Jenkins) berbasis Docker Compose dengan Single Node juga. Untuk expose aplikasi saya menggunakan Gateway API + MetalLB pada kluster K8S agar resource yang dimiliki tetap cukup untuk mendemontrasikan keseluruhan alur deployment"
 
 ## Preparation
 
@@ -188,7 +189,6 @@ Dokumen ini merangkum langkah yang saya lakukan di lab untuk menjalankan project
 - Memory: 4 GB
 - IP Address: 192.168.113.52/24
 
----
 
 ## 1) Instalasi Kubernetes Cluster dengan RKE2 (node-1)
 
