@@ -64,8 +64,7 @@ services:
       - postgres-keycloak
     volumes:
       - /opt/keycloak/data:/opt/keycloak/data
-      - /opt/keycloak/certs/server.crt:/opt/keycloak/certs/servercrt.pem:ro
-      - /opt/keycloak/certs/server.key:/opt/keycloak/certs/serverkey.pem:ro
+      - /opt/keycloak/certs:/opt/keycloak/certs
     ports:
       - "8080:8080"
       - "443:8443"
