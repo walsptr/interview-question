@@ -45,7 +45,6 @@ services:
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.5.5
-    user: 2000:2000
     container_name: keycloak
     restart: unless-stopped
     environment:
