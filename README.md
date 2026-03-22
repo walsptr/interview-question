@@ -600,6 +600,14 @@ kubectl config view --raw --minify --flatten -o jsonpath='{.clusters[0].cluster.
 | base64 -d > ca-kube.crt
 ```
 
+Copy ca-kube.crt ke node-2 untuk digunakan di Vault:
+```
+scp ca-kube.crt node-2:~/
+
+ssh node-2
+cp ca-kube.crt /opt/vault/certs/
+```
+
 ## 11) Konfigurasi Vault Auth Kubernetes (node-2)
 
 Mengaktifkan auth method `kubernetes` di Vault dan mengaitkan Vault dengan API server Kubernetes (host+CA+token reviewer).
